@@ -1,57 +1,38 @@
 import type {
 	PDFUploadResponse,
-	PDFListResponse,
 	PDFDocument,
 	ConversionJobCreate,
 	ConversionJob,
 	ConversionJobListResponse,
 	ConversionResult,
-	UserSettings,
-	UserSettingsUpdate,
-	LLMServicesResponse,
 	LLMServiceTestRequest,
 	LLMServiceTestResponse
 } from './types';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-class APIError extends Error {
-	constructor(
-		message: string,
-		public status: number,
-		public response?: Response
-	) {
-		super(message);
-		this.name = 'APIError';
-	}
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T = any>(response: Response): Promise<T> {
 	if (!response.ok) {
-		const errorText = await response.text();
-		let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-		
+		let errorMessage: string;
 		try {
-			const errorData = JSON.parse(errorText);
-			errorMessage = errorData.detail || errorMessage;
+			const errorData = await response.json();
+			errorMessage = errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 		} catch {
-			// If not JSON, use the text as is
-			errorMessage = errorText || errorMessage;
+			errorMessage = `HTTP ${response.status}: ${response.statusText}`;
 		}
-		
-		throw new APIError(errorMessage, response.status, response);
+		throw new Error(errorMessage);
+	}
+
+	const contentType = response.headers.get('content-type');
+	if (contentType && contentType.includes('application/json')) {
+		return response.json();
 	}
 	
-	return response.json();
+	// For blob responses (downloads)
+	return response.blob() as unknown as T;
 }
 
 export class MarkUIAPI {
-	// Health Check
-	static async healthCheck(): Promise<{ status: string; app_name: string; version: string }> {
-		const response = await fetch(`${API_BASE_URL}/health`);
-		return handleResponse(response);
-	}
-
 	// PDF Management
 	static async uploadPDF(file: File): Promise<PDFUploadResponse> {
 		const formData = new FormData();
@@ -62,23 +43,6 @@ export class MarkUIAPI {
 			body: formData
 		});
 
-		return handleResponse(response);
-	}
-
-	static async listPDFs(page = 1, perPage = 10): Promise<PDFListResponse> {
-		const response = await fetch(`${API_BASE_URL}/pdf/list?page=${page}&per_page=${perPage}`);
-		return handleResponse(response);
-	}
-
-	static async getPDF(pdfId: number): Promise<PDFDocument> {
-		const response = await fetch(`${API_BASE_URL}/pdf/${pdfId}`);
-		return handleResponse(response);
-	}
-
-	static async deletePDF(pdfId: number): Promise<{ message: string }> {
-		const response = await fetch(`${API_BASE_URL}/pdf/${pdfId}`, {
-			method: 'DELETE'
-		});
 		return handleResponse(response);
 	}
 
@@ -97,7 +61,7 @@ export class MarkUIAPI {
 		return result;
 	}
 
-	// Conversion Jobs
+	// Conversion Management
 	static async createConversionJob(jobData: ConversionJobCreate): Promise<ConversionJob> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs`, {
 			method: 'POST',
@@ -110,79 +74,39 @@ export class MarkUIAPI {
 		return handleResponse(response);
 	}
 
-	static async listConversionJobs(
-		page = 1,
-		perPage = 10,
-		status?: string
-	): Promise<ConversionJobListResponse> {
-		const params = new URLSearchParams({
-			page: page.toString(),
-			per_page: perPage.toString()
-		});
-
-		if (status) {
-			params.append('status', status);
-		}
-
-		const response = await fetch(`${API_BASE_URL}/conversion/jobs?${params}`);
-		return handleResponse(response);
-	}
-
 	static async getConversionJob(jobId: number): Promise<ConversionJob> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}`);
 		return handleResponse(response);
 	}
 
+	static async getConversionJobs(): Promise<ConversionJobListResponse> {
+		const response = await fetch(`${API_BASE_URL}/conversion/jobs`);
+		return handleResponse(response);
+	}
+
 	static async getConversionResult(jobId: number): Promise<ConversionResult> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}/result`);
-		return handleResponse(response);
+		const result = await handleResponse<ConversionResult>(response);
+		
+		// Convert relative image paths to absolute URLs
+		if (result.images) {
+			result.images = result.images.map(path => {
+				if (path.startsWith('/')) {
+					return `http://localhost:8000${path}`;
+				}
+				return path;
+			});
+		}
+		
+		return result;
 	}
 
 	static async downloadConversionResult(jobId: number): Promise<Blob> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}/download`);
-		
-		if (!response.ok) {
-			throw new APIError(`Download failed: ${response.statusText}`, response.status, response);
-		}
-		
-		return response.blob();
+		return handleResponse<Blob>(response);
 	}
 
-	static async deleteConversionJob(jobId: number): Promise<{ message: string }> {
-		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}`, {
-			method: 'DELETE'
-		});
-		return handleResponse(response);
-	}
-
-	// Settings
-	static async getUserSettings(): Promise<UserSettings> {
-		const response = await fetch(`${API_BASE_URL}/settings/user`);
-		return handleResponse(response);
-	}
-
-	static async updateUserSettings(settings: UserSettingsUpdate): Promise<UserSettings> {
-		const response = await fetch(`${API_BASE_URL}/settings/user`, {
-			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(settings)
-		});
-
-		return handleResponse(response);
-	}
-
-	static async getLLMServices(): Promise<LLMServicesResponse> {
-		const response = await fetch(`${API_BASE_URL}/settings/llm-services`);
-		return handleResponse(response);
-	}
-
-	static async getConfiguredLLMServices(): Promise<LLMServicesResponse> {
-		const response = await fetch(`${API_BASE_URL}/settings/llm-services/configured`);
-		return handleResponse(response);
-	}
-
+	// LLM Service Testing
 	static async testLLMServiceConnection(testRequest: LLMServiceTestRequest): Promise<LLMServiceTestResponse> {
 		const response = await fetch(`${API_BASE_URL}/settings/llm-services/test`, {
 			method: 'POST',
@@ -191,27 +115,7 @@ export class MarkUIAPI {
 			},
 			body: JSON.stringify(testRequest)
 		});
-		return handleResponse(response);
-	}
 
-	static async getOllamaModels(baseUrl: string = 'http://localhost:11434'): Promise<{ models: string[] }> {
-		const params = new URLSearchParams({ base_url: baseUrl });
-		const response = await fetch(`${API_BASE_URL}/settings/ollama/models?${params}`);
-		return handleResponse(response);
-	}
-
-	static async getConversionDefaults(): Promise<{
-		output_format: string;
-		use_llm: boolean;
-		force_ocr: boolean;
-		format_lines: boolean;
-		llm_service: string | null;
-		disable_image_extraction: boolean;
-		strip_existing_ocr: boolean;
-		redo_inline_math: boolean;
-		paginate_output: boolean;
-	}> {
-		const response = await fetch(`${API_BASE_URL}/conversion/defaults`);
 		return handleResponse(response);
 	}
 }
@@ -229,6 +133,4 @@ export function formatFileSize(bytes: number): string {
 
 export function formatDate(dateString: string): string {
 	return new Date(dateString).toLocaleString();
-}
-
-export { APIError }; 
+} 

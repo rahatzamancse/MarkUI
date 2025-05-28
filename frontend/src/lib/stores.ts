@@ -1,14 +1,9 @@
 import { writable, derived, get } from 'svelte/store';
 import type { 
-	UserSettings, 
 	PDFDocument, 
 	ConversionJob, 
-	LLMServiceInfo,
-	OutputFormat,
-	LLMServiceTestRequest,
-	LLMServiceTestResponse
+	OutputFormat
 } from './types';
-import { MarkUIAPI } from './api';
 import { browser } from '$app/environment';
 
 // Theme store with localStorage persistence
@@ -56,9 +51,6 @@ theme.subscribe(value => {
 	console.log('Theme store changed to:', value);
 });
 
-// User settings store
-export const userSettings = writable<UserSettings | null>(null);
-
 // Current PDF store
 export const currentPDF = writable<PDFDocument | null>(null);
 
@@ -82,23 +74,12 @@ export const conversionOptions = writable({
 // Loading states
 export const isLoading = writable(false);
 export const uploadProgress = writable(0);
-export const conversionDefaultsLoaded = writable(false);
 
 // Error handling
 export const error = writable<string | null>(null);
 
-// PDF list store
-export const pdfList = writable<PDFDocument[]>([]);
-
 // Conversion jobs store
 export const conversionJobs = writable<ConversionJob[]>([]);
-
-// LLM services store
-export const llmServices = writable<LLMServiceInfo[]>([]);
-export const configuredLLMServices = writable<LLMServiceInfo[]>([]);
-
-// Ollama models store
-export const ollamaModels = writable<string[]>([]);
 
 // Current conversion result
 export const currentResult = writable<{
@@ -106,6 +87,20 @@ export const currentResult = writable<{
 	content?: string;
 	images?: string[];
 } | null>(null);
+
+// LLM Configuration (session-only, no persistence)
+export const llmConfig = writable({
+	gemini_api_key: '',
+	openai_api_key: '',
+	claude_api_key: '',
+	ollama_base_url: 'http://localhost:11434',
+	ollama_model: 'llama3.2:latest',
+	openai_model: 'gpt-4o',
+	openai_base_url: '',
+	claude_model_name: 'claude-3-sonnet-20240229',
+	vertex_project_id: '',
+	default_llm_service: ''
+});
 
 // Derived stores
 export const isDarkMode = derived(theme, ($theme) => {
@@ -131,8 +126,6 @@ export const actions = {
 			const currentTheme = get(theme);
 			const newTheme = currentTheme === 'light' ? 'dark' : 'light';
 			console.log('Toggle theme:', currentTheme, '->', newTheme);
-			
-			// Save to localStorage instead of backend
 			theme.set(newTheme);
 		} catch (err) {
 			actions.setError(`Failed to toggle theme: ${err}`);
@@ -165,7 +158,12 @@ export const actions = {
 	// PDF actions
 	selectPDF(pdf: PDFDocument) {
 		currentPDF.set(pdf);
-		selectedPages.set(new Set()); // Clear selected pages when switching PDFs
+		// Select all pages by default when switching PDFs
+		const allPages = new Set<number>();
+		for (let i = 1; i <= pdf.total_pages; i++) {
+			allPages.add(i);
+		}
+		selectedPages.set(allPages);
 	},
 
 	clearCurrentPDF() {
@@ -207,169 +205,18 @@ export const actions = {
 	},
 
 	// Conversion options actions
-	updateConversionOption<K extends keyof typeof conversionOptions>(
-		key: K, 
-		value: any
-	) {
+	updateConversionOption(key: string, value: any) {
 		conversionOptions.update(options => ({
 			...options,
 			[key]: value
 		}));
 	},
 
-	async resetConversionOptions() {
-		try {
-			const defaults = await MarkUIAPI.getConversionDefaults();
-			conversionOptions.set({
-				output_format: defaults.output_format as OutputFormat,
-				use_llm: defaults.use_llm,
-				force_ocr: defaults.force_ocr,
-				strip_existing_ocr: defaults.strip_existing_ocr,
-				format_lines: defaults.format_lines,
-				redo_inline_math: defaults.redo_inline_math,
-				disable_image_extraction: defaults.disable_image_extraction,
-				paginate_output: defaults.paginate_output,
-				llm_service: defaults.llm_service || undefined,
-				llm_model: undefined
-			});
-		} catch (err) {
-			// Fallback to hardcoded defaults if API call fails
-			conversionOptions.set({
-				output_format: 'markdown' as OutputFormat,
-				use_llm: false,
-				force_ocr: false,
-				strip_existing_ocr: false,
-				format_lines: false,
-				redo_inline_math: false,
-				disable_image_extraction: false,
-				paginate_output: false,
-				llm_service: undefined,
-				llm_model: undefined
-			});
-		}
-	},
-
-	// API actions
-	async loadUserSettings() {
-		try {
-			isLoading.set(true);
-			const settings = await MarkUIAPI.getUserSettings();
-			console.log('Loaded user settings:', settings);
-			userSettings.set(settings);
-			// Theme is now managed locally via localStorage, not from backend
-		} catch (err) {
-			actions.setError(`Failed to load settings: ${err}`);
-		} finally {
-			isLoading.set(false);
-		}
-	},
-
-	async updateSettings(updates: Partial<UserSettings>) {
-		try {
-			isLoading.set(true);
-			console.log('Updating settings:', updates);
-			
-			// Remove theme from updates since it's managed locally
-			const { theme: _, ...backendUpdates } = updates;
-			
-			const updatedSettings = await MarkUIAPI.updateUserSettings(backendUpdates);
-			console.log('Updated settings response:', updatedSettings);
-			userSettings.set(updatedSettings);
-			// Theme is now managed locally via localStorage, not from backend
-		} catch (err) {
-			actions.setError(`Failed to update settings: ${err}`);
-		} finally {
-			isLoading.set(false);
-		}
-	},
-
-	async loadPDFList() {
-		try {
-			isLoading.set(true);
-			const response = await MarkUIAPI.listPDFs();
-			pdfList.set(response.pdfs);
-		} catch (err) {
-			actions.setError(`Failed to load PDFs: ${err}`);
-		} finally {
-			isLoading.set(false);
-		}
-	},
-
-	async loadConversionJobs() {
-		try {
-			const response = await MarkUIAPI.listConversionJobs();
-			conversionJobs.set(response.jobs);
-		} catch (err) {
-			actions.setError(`Failed to load conversion jobs: ${err}`);
-		}
-	},
-
-	async loadLLMServices() {
-		try {
-			const response = await MarkUIAPI.getLLMServices();
-			llmServices.set(response.services);
-		} catch (err) {
-			actions.setError(`Failed to load LLM services: ${err}`);
-		}
-	},
-
-	async loadConfiguredLLMServices() {
-		try {
-			const response = await MarkUIAPI.getConfiguredLLMServices();
-			configuredLLMServices.set(response.services);
-		} catch (err) {
-			actions.setError(`Failed to load configured LLM services: ${err}`);
-		}
-	},
-
-	async testLLMServiceConnection(testRequest: LLMServiceTestRequest): Promise<LLMServiceTestResponse> {
-		try {
-			return await MarkUIAPI.testLLMServiceConnection(testRequest);
-		} catch (err) {
-			throw new Error(`Failed to test LLM service connection: ${err}`);
-		}
-	},
-
-	async loadOllamaModels(baseUrl: string) {
-		try {
-			const response = await MarkUIAPI.getOllamaModels(baseUrl);
-			ollamaModels.set(response.models);
-			return response.models;
-		} catch (err) {
-			ollamaModels.set([]);
-			throw new Error(`Failed to load Ollama models: ${err}`);
-		}
-	},
-
-	async loadConversionDefaults() {
-		try {
-			const defaults = await MarkUIAPI.getConversionDefaults();
-			conversionOptions.set({
-				output_format: defaults.output_format as OutputFormat,
-				use_llm: defaults.use_llm,
-				force_ocr: defaults.force_ocr,
-				strip_existing_ocr: defaults.strip_existing_ocr,
-				format_lines: defaults.format_lines,
-				redo_inline_math: defaults.redo_inline_math,
-				disable_image_extraction: defaults.disable_image_extraction,
-				paginate_output: defaults.paginate_output,
-				llm_service: defaults.llm_service || undefined,
-				llm_model: undefined
-			});
-			conversionDefaultsLoaded.set(true);
-		} catch (err) {
-			console.error('Failed to load conversion defaults:', err);
-			actions.setError(`Failed to load conversion defaults: ${err}`);
-			conversionDefaultsLoaded.set(true); // Set to true even on error to prevent infinite loading
-		}
+	// LLM Config actions
+	updateLLMConfig(key: string, value: any) {
+		llmConfig.update(config => ({
+			...config,
+			[key]: value
+		}));
 	}
-};
-
-// Initialize stores on app start
-if (typeof window !== 'undefined') {
-	// Load initial data with error handling
-	actions.loadUserSettings().catch(console.error);
-	actions.loadLLMServices().catch(console.error);
-	actions.loadConfiguredLLMServices().catch(console.error);
-	actions.loadConversionDefaults().catch(console.error);
-} 
+}; 

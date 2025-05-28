@@ -5,6 +5,13 @@
 /* Configure dark mode to use class strategy for Tailwind CSS v4 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Define custom gray colors for Tailwind CSS v4 compatibility */
+@theme {
+	--color-gray-200: #e5e7eb;
+	--color-gray-300: #d1d5db;
+	--color-gray-400: #9ca3af;
+}
+
 /* Custom styles for better typography */
 .prose {
 	@apply text-gray-900 dark:text-gray-100;

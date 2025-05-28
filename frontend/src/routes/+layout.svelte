@@ -4,9 +4,6 @@
 	import { page } from '$app/stores';
 	import { theme, isDarkMode, error, isLoading, actions } from '$lib/stores';
 	import { 
-		Home, 
-		FileText, 
-		Settings, 
 		Moon, 
 		Sun, 
 		AlertCircle, 
@@ -43,20 +40,6 @@
 			document.documentElement.classList.remove('dark');
 		}
 	});
-
-	// Navigation items
-	const navItems = [
-		{ href: '/', icon: Home, label: 'Home' },
-		{ href: '/convert', icon: FileText, label: 'Convert' },
-		{ href: '/settings', icon: Settings, label: 'Settings' }
-	];
-
-	function isActiveRoute(href: string): boolean {
-		if (href === '/') {
-			return $page.url.pathname === '/';
-		}
-		return $page.url.pathname.startsWith(href);
-	}
 </script>
 
 <div class="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -64,29 +47,17 @@
 	<nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex justify-between h-16">
-				<!-- Logo and main nav -->
-				<div class="flex">
-					<div class="flex-shrink-0 flex items-center">
-						<h1 class="text-xl font-bold text-blue-600 dark:text-blue-400">
-							MarkUI
-						</h1>
-					</div>
-					<div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-						{#each navItems as item}
-							<a
-								href={item.href}
-								class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {isActiveRoute(item.href)
-									? 'border-blue-500 text-gray-900 dark:text-white'
-									: 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}"
-							>
-								<item.icon class="w-4 h-4 mr-2" />
-								{item.label}
-							</a>
-						{/each}
-					</div>
+				<!-- Logo as home link -->
+				<div class="flex items-center">
+					<a 
+						href="/" 
+						class="text-xl font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200"
+					>
+						MarkUI
+					</a>
 				</div>
 
-				<!-- Theme toggle and loading indicator -->
+				<!-- Theme toggle -->
 				<div class="flex items-center space-x-4">
 					{#if $isLoading}
 						<div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
@@ -107,25 +78,6 @@
 						{/if}
 					</button>
 				</div>
-			</div>
-		</div>
-
-		<!-- Mobile navigation -->
-		<div class="sm:hidden">
-			<div class="pt-2 pb-3 space-y-1">
-				{#each navItems as item}
-					<a
-						href={item.href}
-						class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium transition-colors duration-200 {isActiveRoute(item.href)
-							? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300'
-							: 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}"
-					>
-						<div class="flex items-center">
-							<item.icon class="w-4 h-4 mr-3" />
-							{item.label}
-						</div>
-					</a>
-				{/each}
 			</div>
 		</div>
 	</nav>
