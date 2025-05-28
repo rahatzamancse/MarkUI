@@ -76,7 +76,7 @@ export const conversionOptions = writable({
 	recognition_batch_size: undefined as number | undefined,
 	
 	// OCR & Text Processing Options
-	languages: undefined as string[] | undefined,
+	languages: undefined as string | undefined,
 	ocr_task_name: undefined as string | undefined,
 	disable_ocr_math: undefined as boolean | undefined,
 	keep_chars: undefined as boolean | undefined,

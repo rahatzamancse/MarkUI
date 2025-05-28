@@ -310,7 +310,57 @@
 				disable_image_extraction: $conversionOptions.disable_image_extraction,
 				paginate_output: $conversionOptions.paginate_output,
 				llm_service: $conversionOptions.llm_service,
-				llm_model: $conversionOptions.llm_model
+				llm_model: $conversionOptions.llm_model,
+				
+				// Performance & Quality Options
+				lowres_image_dpi: $conversionOptions.lowres_image_dpi,
+				highres_image_dpi: $conversionOptions.highres_image_dpi,
+				layout_batch_size: $conversionOptions.layout_batch_size,
+				detection_batch_size: $conversionOptions.detection_batch_size,
+				recognition_batch_size: $conversionOptions.recognition_batch_size,
+				
+				// OCR & Text Processing Options
+				languages: $conversionOptions.languages ? $conversionOptions.languages.split(',').map(lang => lang.trim()).filter(lang => lang.length > 0) : undefined,
+				ocr_task_name: $conversionOptions.ocr_task_name,
+				disable_ocr_math: $conversionOptions.disable_ocr_math,
+				keep_chars: $conversionOptions.keep_chars,
+				
+				// Layout & Structure Options
+				force_layout_block: $conversionOptions.force_layout_block,
+				column_gap_ratio: $conversionOptions.column_gap_ratio,
+				gap_threshold: $conversionOptions.gap_threshold,
+				list_gap_threshold: $conversionOptions.list_gap_threshold,
+				
+				// Table Processing Options
+				detect_boxes: $conversionOptions.detect_boxes,
+				table_rec_batch_size: $conversionOptions.table_rec_batch_size,
+				max_table_rows: $conversionOptions.max_table_rows,
+				max_rows_per_batch: $conversionOptions.max_rows_per_batch,
+				
+				// Section & Header Processing
+				level_count: $conversionOptions.level_count,
+				merge_threshold: $conversionOptions.merge_threshold,
+				default_level: $conversionOptions.default_level,
+				
+				// Advanced Processing Options
+				min_equation_height: $conversionOptions.min_equation_height,
+				equation_batch_size: $conversionOptions.equation_batch_size,
+				inlinemath_min_ratio: $conversionOptions.inlinemath_min_ratio,
+				
+				// Output Control Options
+				page_separator: $conversionOptions.page_separator,
+				extract_images: $conversionOptions.extract_images,
+				
+				// Debug Options
+				debug: $conversionOptions.debug,
+				debug_layout_images: $conversionOptions.debug_layout_images,
+				debug_pdf_images: $conversionOptions.debug_pdf_images,
+				debug_json: $conversionOptions.debug_json,
+				debug_data_folder: $conversionOptions.debug_data_folder,
+				
+				// LLM Processing Options
+				max_concurrency: $conversionOptions.max_concurrency,
+				confidence_threshold: $conversionOptions.confidence_threshold
 			};
 
 			// Only include API keys if they're not from environment variables and have values
