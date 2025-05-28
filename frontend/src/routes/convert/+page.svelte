@@ -25,7 +25,10 @@
 		AlertCircle,
 		EyeOff,
 		RefreshCw,
-		Copy
+		Copy,
+		ChevronDown,
+		ChevronUp,
+		Info
 	} from 'lucide-svelte';
 	import { 
 		currentPDF, 
@@ -38,7 +41,7 @@
 		canStartConversion
 	} from '$lib/stores';
 	import { MarkUIAPI } from '$lib/api';
-	import { OutputFormat, ConversionStatus, type ConversionJobCreate } from '$lib/types';
+	import { OutputFormat, ConversionStatus, type ConversionJobCreate, type ServerConfigResponse } from '$lib/types';
 	import JsonViewer from '$lib/components/JsonViewer.svelte';
 
 	let previewImages: string[] = $state([]);
@@ -53,6 +56,71 @@
 	let testingServices: Record<string, boolean> = $state({});
 	let testResults: Record<string, { success: boolean; message: string; response_time_ms?: number }> = $state({});
 	let rawJsonCopied = $state(false);
+	let currentPDFId: number | null = $state(null);
+	let serverConfig: ServerConfigResponse | null = $state(null);
+	let loadingServerConfig = $state(false);
+	let advancedOptionsExpanded = $state(false);
+	
+	// Track which API keys are from environment variables (pre-populated and hidden)
+	let envApiKeys = $state({
+		gemini: false,
+		openai: false,
+		claude: false
+	});
+
+	// Load server configuration on mount
+	onMount(async () => {
+		try {
+			loadingServerConfig = true;
+			serverConfig = await MarkUIAPI.getServerConfig();
+			
+			// Pre-populate API keys from environment variables
+			if (serverConfig.has_gemini_api_key) {
+				actions.updateLLMConfig('gemini_api_key', '••••••••••••••••'); // Placeholder for hidden key
+				envApiKeys.gemini = true;
+			}
+			
+			if (serverConfig.has_openai_api_key) {
+				actions.updateLLMConfig('openai_api_key', '••••••••••••••••'); // Placeholder for hidden key
+				envApiKeys.openai = true;
+			}
+			
+			if (serverConfig.has_claude_api_key) {
+				actions.updateLLMConfig('claude_api_key', '••••••••••••••••'); // Placeholder for hidden key
+				envApiKeys.claude = true;
+			}
+			
+			// Pre-populate default configurations
+			if (serverConfig.default_openai_model) {
+				actions.updateLLMConfig('openai_model', serverConfig.default_openai_model);
+			}
+			
+			if (serverConfig.default_openai_base_url) {
+				actions.updateLLMConfig('openai_base_url', serverConfig.default_openai_base_url);
+			}
+			
+			if (serverConfig.default_claude_model_name) {
+				actions.updateLLMConfig('claude_model_name', serverConfig.default_claude_model_name);
+			}
+			
+			if (serverConfig.default_ollama_base_url) {
+				actions.updateLLMConfig('ollama_base_url', serverConfig.default_ollama_base_url);
+			}
+			
+			if (serverConfig.default_ollama_model) {
+				actions.updateLLMConfig('ollama_model', serverConfig.default_ollama_model);
+			}
+			
+			if (serverConfig.default_vertex_project_id) {
+				actions.updateLLMConfig('vertex_project_id', serverConfig.default_vertex_project_id);
+			}
+			
+		} catch (error) {
+			console.error('Failed to load server configuration:', error);
+		} finally {
+			loadingServerConfig = false;
+		}
+	});
 
 	// Recursively parse JSON strings that might contain nested JSON
 	function deepParseJson(obj: any): any {
@@ -116,13 +184,17 @@
 
 	// Load preview images when PDF changes
 	$effect(() => {
-		if ($currentPDF) {
+		if ($currentPDF && $currentPDF.id !== currentPDFId) {
+			currentPDFId = $currentPDF.id;
 			loadPreviewImages();
 			
 			// Ensure all pages are selected by default if none are selected
 			if ($selectedPages.size === 0) {
 				actions.selectAllPages($currentPDF.total_pages);
 			}
+		} else if (!$currentPDF) {
+			currentPDFId = null;
+			previewImages = [];
 		}
 	});
 
@@ -158,16 +230,26 @@
 		showApiKeys[service] = !showApiKeys[service];
 	}
 
+	function restoreEnvironmentCredentials(service: string) {
+		if (service === 'gemini' && serverConfig?.has_gemini_api_key) {
+			envApiKeys.gemini = true;
+			actions.updateLLMConfig('gemini_api_key', '••••••••••••••••');
+		} else if (service === 'openai' && serverConfig?.has_openai_api_key) {
+			envApiKeys.openai = true;
+			actions.updateLLMConfig('openai_api_key', '••••••••••••••••');
+		} else if (service === 'claude' && serverConfig?.has_claude_api_key) {
+			envApiKeys.claude = true;
+			actions.updateLLMConfig('claude_api_key', '••••••••••••••••');
+		}
+	}
+
 	async function testServiceConnection(serviceName: string) {
 		testingServices[serviceName] = true;
 		delete testResults[serviceName];
 		
 		try {
-			const testRequest = {
+			const testRequest: any = {
 				service_name: serviceName,
-				gemini_api_key: $llmConfig.gemini_api_key || undefined,
-				openai_api_key: $llmConfig.openai_api_key || undefined,
-				claude_api_key: $llmConfig.claude_api_key || undefined,
 				ollama_base_url: $llmConfig.ollama_base_url || undefined,
 				ollama_model: $llmConfig.ollama_model || undefined,
 				openai_model: $llmConfig.openai_model || undefined,
@@ -175,6 +257,17 @@
 				claude_model_name: $llmConfig.claude_model_name || undefined,
 				vertex_project_id: $llmConfig.vertex_project_id || undefined
 			};
+
+			// Only include API keys if they're not from environment variables and have values
+			if (!envApiKeys.gemini && $llmConfig.gemini_api_key) {
+				testRequest.gemini_api_key = $llmConfig.gemini_api_key;
+			}
+			if (!envApiKeys.openai && $llmConfig.openai_api_key) {
+				testRequest.openai_api_key = $llmConfig.openai_api_key;
+			}
+			if (!envApiKeys.claude && $llmConfig.claude_api_key) {
+				testRequest.claude_api_key = $llmConfig.claude_api_key;
+			}
 
 			const result = await MarkUIAPI.testLLMServiceConnection(testRequest);
 			testResults[serviceName] = {
@@ -219,6 +312,17 @@
 				llm_service: $conversionOptions.llm_service,
 				llm_model: $conversionOptions.llm_model
 			};
+
+			// Only include API keys if they're not from environment variables and have values
+			if (!envApiKeys.gemini && $llmConfig.gemini_api_key) {
+				jobData.gemini_api_key = $llmConfig.gemini_api_key;
+			}
+			if (!envApiKeys.openai && $llmConfig.openai_api_key) {
+				jobData.openai_api_key = $llmConfig.openai_api_key;
+			}
+			if (!envApiKeys.claude && $llmConfig.claude_api_key) {
+				jobData.claude_api_key = $llmConfig.claude_api_key;
+			}
 
 			// Create conversion job
 			const job = await MarkUIAPI.createConversionJob(jobData);
@@ -281,6 +385,10 @@
 	}
 
 	function renderContent(content: string, format: OutputFormat, images?: string[]): string {
+		if (!content || content.trim() === '') {
+			return '<div class="text-gray-500 dark:text-gray-400 italic">No content available</div>';
+		}
+		
 		if (format === 'html') {
 			// For HTML, apply image replacement and then sanitize
 			let htmlContent = content;
@@ -754,14 +862,43 @@
 								{#if $llmConfig.default_llm_service === 'marker.services.gemini.GoogleGeminiService'}
 									<div>
 										<div class="flex items-center justify-between mb-2">
-											<label for="gemini-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-												Gemini API Key
-											</label>
+											<div class="flex items-center">
+												<label for="gemini-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+													Gemini API Key
+													{#if envApiKeys.gemini}
+														<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+															<Server class="w-3 h-3 mr-1" />
+															From Environment
+														</span>
+													{/if}
+												</label>
+												{#if serverConfig?.has_gemini_api_key && !envApiKeys.gemini}
+													<button
+														type="button"
+														onclick={() => restoreEnvironmentCredentials('gemini')}
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors duration-200 cursor-pointer"
+														title="Use environment variable"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{:else if serverConfig?.has_gemini_api_key === false}
+													<button
+														type="button"
+														disabled
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 dark:bg-red-900/20 dark:text-red-400 opacity-50 cursor-not-allowed"
+														title="No environment variable configured"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{/if}
+											</div>
 											<button
 												type="button"
 												onclick={() => testServiceConnection('marker.services.gemini.GoogleGeminiService')}
 												disabled={testingServices['marker.services.gemini.GoogleGeminiService'] || !$llmConfig.gemini_api_key}
-												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
 											>
 												{#if testingServices['marker.services.gemini.GoogleGeminiService']}
 													<Loader2 class="w-3 h-3 mr-1 animate-spin" />
@@ -777,8 +914,19 @@
 												id="gemini-key"
 												type={showApiKeys.gemini ? 'text' : 'password'}
 												bind:value={$llmConfig.gemini_api_key}
-												placeholder="Enter your Gemini API key"
-												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm"
+												placeholder={envApiKeys.gemini ? "Using environment variable (hidden)" : "Enter your Gemini API key"}
+												readonly={envApiKeys.gemini}
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm {envApiKeys.gemini ? 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400' : ''}"
+												onfocus={(e) => {
+													if (envApiKeys.gemini) {
+														// Clear the placeholder and allow editing
+														envApiKeys.gemini = false;
+														actions.updateLLMConfig('gemini_api_key', '');
+														e.currentTarget.placeholder = "Enter your Gemini API key";
+														e.currentTarget.classList.remove('bg-gray-50', 'dark:bg-gray-800', 'text-gray-500', 'dark:text-gray-400');
+														e.currentTarget.readOnly = false;
+													}
+												}}
 											/>
 											<button
 												type="button"
@@ -792,6 +940,11 @@
 												{/if}
 											</button>
 										</div>
+										{#if envApiKeys.gemini}
+											<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+												Using API key from server environment variables. Click the field to override with your own key.
+											</p>
+										{/if}
 										{#if testResults['marker.services.gemini.GoogleGeminiService']}
 											<div class="mt-2 p-2 rounded-md {testResults['marker.services.gemini.GoogleGeminiService'].success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}">
 												<div class="flex items-center">
@@ -810,14 +963,43 @@
 								{:else if $llmConfig.default_llm_service === 'marker.services.openai.OpenAIService'}
 									<div>
 										<div class="flex items-center justify-between mb-2">
-											<label for="openai-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-												OpenAI API Key
-											</label>
+											<div class="flex items-center">
+												<label for="openai-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+													OpenAI API Key
+													{#if envApiKeys.openai}
+														<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+															<Server class="w-3 h-3 mr-1" />
+															From Environment
+														</span>
+													{/if}
+												</label>
+												{#if serverConfig?.has_openai_api_key && !envApiKeys.openai}
+													<button
+														type="button"
+														onclick={() => restoreEnvironmentCredentials('openai')}
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors duration-200 cursor-pointer"
+														title="Use environment variable"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{:else if serverConfig?.has_openai_api_key === false}
+													<button
+														type="button"
+														disabled
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 dark:bg-red-900/20 dark:text-red-400 opacity-50 cursor-not-allowed"
+														title="No environment variable configured"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{/if}
+											</div>
 											<button
 												type="button"
 												onclick={() => testServiceConnection('marker.services.openai.OpenAIService')}
 												disabled={testingServices['marker.services.openai.OpenAIService'] || !$llmConfig.openai_api_key}
-												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
 											>
 												{#if testingServices['marker.services.openai.OpenAIService']}
 													<Loader2 class="w-3 h-3 mr-1 animate-spin" />
@@ -833,8 +1015,19 @@
 												id="openai-key"
 												type={showApiKeys.openai ? 'text' : 'password'}
 												bind:value={$llmConfig.openai_api_key}
-												placeholder="Enter your OpenAI API key"
-												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm"
+												placeholder={envApiKeys.openai ? "Using environment variable (hidden)" : "Enter your OpenAI API key"}
+												readonly={envApiKeys.openai}
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm {envApiKeys.openai ? 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400' : ''}"
+												onfocus={(e) => {
+													if (envApiKeys.openai) {
+														// Clear the placeholder and allow editing
+														envApiKeys.openai = false;
+														actions.updateLLMConfig('openai_api_key', '');
+														e.currentTarget.placeholder = "Enter your OpenAI API key";
+														e.currentTarget.classList.remove('bg-gray-50', 'dark:bg-gray-800', 'text-gray-500', 'dark:text-gray-400');
+														e.currentTarget.readOnly = false;
+													}
+												}}
 											/>
 											<button
 												type="button"
@@ -848,6 +1041,11 @@
 												{/if}
 											</button>
 										</div>
+										{#if envApiKeys.openai}
+											<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+												Using API key from server environment variables. Click the field to override with your own key.
+											</p>
+										{/if}
 										<div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
 											<div>
 												<label for="openai-model" class="block text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -892,14 +1090,43 @@
 								{:else if $llmConfig.default_llm_service === 'marker.services.claude.ClaudeService'}
 									<div>
 										<div class="flex items-center justify-between mb-2">
-											<label for="claude-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-												Claude API Key
-											</label>
+											<div class="flex items-center">
+												<label for="claude-key" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+													Claude API Key
+													{#if envApiKeys.claude}
+														<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+															<Server class="w-3 h-3 mr-1" />
+															From Environment
+														</span>
+													{/if}
+												</label>
+												{#if serverConfig?.has_claude_api_key && !envApiKeys.claude}
+													<button
+														type="button"
+														onclick={() => restoreEnvironmentCredentials('claude')}
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors duration-200 cursor-pointer"
+														title="Use environment variable"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{:else if serverConfig?.has_claude_api_key === false}
+													<button
+														type="button"
+														disabled
+														class="ml-3 inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 dark:bg-red-900/20 dark:text-red-400 opacity-50 cursor-not-allowed"
+														title="No environment variable configured"
+													>
+														<Server class="w-3 h-3 mr-1" />
+														From Environment
+													</button>
+												{/if}
+											</div>
 											<button
 												type="button"
 												onclick={() => testServiceConnection('marker.services.claude.ClaudeService')}
 												disabled={testingServices['marker.services.claude.ClaudeService'] || !$llmConfig.claude_api_key}
-												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
 											>
 												{#if testingServices['marker.services.claude.ClaudeService']}
 													<Loader2 class="w-3 h-3 mr-1 animate-spin" />
@@ -915,8 +1142,19 @@
 												id="claude-key"
 												type={showApiKeys.claude ? 'text' : 'password'}
 												bind:value={$llmConfig.claude_api_key}
-												placeholder="Enter your Claude API key"
-												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm"
+												placeholder={envApiKeys.claude ? "Using environment variable (hidden)" : "Enter your Claude API key"}
+												readonly={envApiKeys.claude}
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 pr-10 text-sm {envApiKeys.claude ? 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400' : ''}"
+												onfocus={(e) => {
+													if (envApiKeys.claude) {
+														// Clear the placeholder and allow editing
+														envApiKeys.claude = false;
+														actions.updateLLMConfig('claude_api_key', '');
+														e.currentTarget.placeholder = "Enter your Claude API key";
+														e.currentTarget.classList.remove('bg-gray-50', 'dark:bg-gray-800', 'text-gray-500', 'dark:text-gray-400');
+														e.currentTarget.readOnly = false;
+													}
+												}}
 											/>
 											<button
 												type="button"
@@ -930,6 +1168,11 @@
 												{/if}
 											</button>
 										</div>
+										{#if envApiKeys.claude}
+											<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+												Using API key from server environment variables. Click the field to override with your own key.
+											</p>
+										{/if}
 										<div class="mt-2">
 											<label for="claude-model" class="block text-xs font-medium text-gray-700 dark:text-gray-300">
 												Model
@@ -967,7 +1210,7 @@
 												type="button"
 												onclick={() => testServiceConnection('marker.services.ollama.OllamaService')}
 												disabled={testingServices['marker.services.ollama.OllamaService']}
-												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
 											>
 												{#if testingServices['marker.services.ollama.OllamaService']}
 													<Loader2 class="w-3 h-3 mr-1 animate-spin" />
@@ -1029,7 +1272,7 @@
 												type="button"
 												onclick={() => testServiceConnection('marker.services.vertex.GoogleVertexService')}
 												disabled={testingServices['marker.services.vertex.GoogleVertexService'] || !$llmConfig.vertex_project_id}
-												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+												class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
 											>
 												{#if testingServices['marker.services.vertex.GoogleVertexService']}
 													<Loader2 class="w-3 h-3 mr-1 animate-spin" />
@@ -1183,6 +1426,689 @@
 								</div>
 							</label>
 						</div>
+					</div>
+
+					<!-- Advanced Options -->
+					<div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+						<button
+							type="button"
+							onclick={() => advancedOptionsExpanded = !advancedOptionsExpanded}
+							class="w-full flex items-center justify-between text-lg font-medium text-gray-900 dark:text-white mb-4 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+						>
+							<span>Advanced Options</span>
+							{#if advancedOptionsExpanded}
+								<ChevronUp class="w-5 h-5" />
+							{:else}
+								<ChevronDown class="w-5 h-5" />
+							{/if}
+						</button>
+						
+						{#if advancedOptionsExpanded}
+							<!-- Performance & Quality -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Performance & Quality</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label for="lowres-dpi" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Low-res DPI
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													DPI for layout and line detection (50-300)
+												</div>
+											</div>
+										</label>
+										<input
+											id="lowres-dpi"
+											type="number"
+											bind:value={$conversionOptions.lowres_image_dpi}
+											placeholder="96"
+											min="50"
+											max="300"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="highres-dpi" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											High-res DPI
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													DPI for OCR processing (100-600)
+												</div>
+											</div>
+										</label>
+										<input
+											id="highres-dpi"
+											type="number"
+											bind:value={$conversionOptions.highres_image_dpi}
+											placeholder="192"
+											min="100"
+											max="600"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="layout-batch" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Layout Batch
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Batch size for layout model (1-32)
+												</div>
+											</div>
+										</label>
+										<input
+											id="layout-batch"
+											type="number"
+											bind:value={$conversionOptions.layout_batch_size}
+											placeholder="Auto"
+											min="1"
+											max="32"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="recognition-batch" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Recognition Batch
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Batch size for recognition model (1-32)
+												</div>
+											</div>
+										</label>
+										<input
+											id="recognition-batch"
+											type="number"
+											bind:value={$conversionOptions.recognition_batch_size}
+											placeholder="Auto"
+											min="1"
+											max="32"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+								</div>
+							</div>
+
+							<!-- OCR & Text Processing -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">OCR & Text Processing</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label for="languages" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Languages
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Comma-separated language codes (e.g., en,fr,de)
+												</div>
+											</div>
+										</label>
+										<input
+											id="languages"
+											type="text"
+											bind:value={$conversionOptions.languages}
+											placeholder="en,fr,de"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="ocr-task" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											OCR Mode
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													OCR processing mode with or without bounding boxes
+												</div>
+											</div>
+										</label>
+										<select
+											id="ocr-task"
+											bind:value={$conversionOptions.ocr_task_name}
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										>
+											<option value="">Default</option>
+											<option value="ocr_with_boxes">With boxes</option>
+											<option value="ocr_without_boxes">Without boxes</option>
+										</select>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="disable-ocr-math"
+											type="checkbox"
+											bind:checked={$conversionOptions.disable_ocr_math}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="disable-ocr-math" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Disable OCR Math
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Disable inline math recognition in OCR
+												</div>
+											</div>
+										</label>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="keep-chars"
+											type="checkbox"
+											bind:checked={$conversionOptions.keep_chars}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="keep-chars" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Keep Characters
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Keep individual character information
+												</div>
+											</div>
+										</label>
+									</div>
+								</div>
+							</div>
+
+							<!-- Layout & Structure -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Layout & Structure</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label for="force-layout" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Force Layout
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Force every page to be treated as specific block type
+												</div>
+											</div>
+										</label>
+										<select
+											id="force-layout"
+											bind:value={$conversionOptions.force_layout_block}
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										>
+											<option value="">Auto-detect</option>
+											<option value="Table">Table</option>
+											<option value="Text">Text</option>
+											<option value="Figure">Figure</option>
+										</select>
+									</div>
+									<div>
+										<label for="column-gap" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Column Gap
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Minimum ratio of page width to column gap (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="column-gap"
+											type="number"
+											bind:value={$conversionOptions.column_gap_ratio}
+											placeholder="0.02"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="gap-threshold" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Block Gap
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Minimum gap between blocks for grouping (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="gap-threshold"
+											type="number"
+											bind:value={$conversionOptions.gap_threshold}
+											placeholder="0.05"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="list-gap" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											List Gap
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Minimum gap between list items (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="list-gap"
+											type="number"
+											bind:value={$conversionOptions.list_gap_threshold}
+											placeholder="0.1"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+								</div>
+							</div>
+
+							<!-- Table Processing -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Table Processing</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div class="flex items-center">
+										<input
+											id="detect-boxes"
+											type="checkbox"
+											bind:checked={$conversionOptions.detect_boxes}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="detect-boxes" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Detect Boxes
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Detect table boxes for recognition
+												</div>
+											</div>
+										</label>
+									</div>
+									<div>
+										<label for="table-batch" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Table Batch
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Batch size for table recognition (1-32)
+												</div>
+											</div>
+										</label>
+										<input
+											id="table-batch"
+											type="number"
+											bind:value={$conversionOptions.table_rec_batch_size}
+											placeholder="Auto"
+											min="1"
+											max="32"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="max-table-rows" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Max Rows (LLM)
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Maximum table rows to process with LLM (1-500)
+												</div>
+											</div>
+										</label>
+										<input
+											id="max-table-rows"
+											type="number"
+											bind:value={$conversionOptions.max_table_rows}
+											placeholder="175"
+											min="1"
+											max="500"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="rows-per-batch" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Rows per Batch
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Chunk tables with more rows than this (1-200)
+												</div>
+											</div>
+										</label>
+										<input
+											id="rows-per-batch"
+											type="number"
+											bind:value={$conversionOptions.max_rows_per_batch}
+											placeholder="60"
+											min="1"
+											max="200"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+								</div>
+							</div>
+
+							<!-- Section Headers -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Section Headers</h4>
+								<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+									<div>
+										<label for="level-count" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Heading Levels
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Number of heading levels to use (1-10)
+												</div>
+											</div>
+										</label>
+										<input
+											id="level-count"
+											type="number"
+											bind:value={$conversionOptions.level_count}
+											placeholder="4"
+											min="1"
+											max="10"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="merge-threshold" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Merge Threshold
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Minimum gap between headings for grouping (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="merge-threshold"
+											type="number"
+											bind:value={$conversionOptions.merge_threshold}
+											placeholder="0.25"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="default-level" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Default Level
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Default heading level if none detected (1-6)
+												</div>
+											</div>
+										</label>
+										<input
+											id="default-level"
+											type="number"
+											bind:value={$conversionOptions.default_level}
+											placeholder="2"
+											min="1"
+											max="6"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+								</div>
+							</div>
+
+							<!-- Math & Equations -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Math & Equations</h4>
+								<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+									<div>
+										<label for="min-equation-height" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Min Equation Height
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Minimum equation height ratio for processing (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="min-equation-height"
+											type="number"
+											bind:value={$conversionOptions.min_equation_height}
+											placeholder="0.06"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="equation-batch" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Equation Batch
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Batch size for equation processing (1-32)
+												</div>
+											</div>
+										</label>
+										<input
+											id="equation-batch"
+											type="number"
+											bind:value={$conversionOptions.equation_batch_size}
+											placeholder="Auto"
+											min="1"
+											max="32"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div>
+										<label for="inlinemath-ratio" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Inline Math Ratio
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Ratio threshold for assuming everything has math (0-1)
+												</div>
+											</div>
+										</label>
+										<input
+											id="inlinemath-ratio"
+											type="number"
+											bind:value={$conversionOptions.inlinemath_min_ratio}
+											placeholder="0.4"
+											min="0"
+											max="1"
+											step="0.01"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+								</div>
+							</div>
+
+							<!-- Output Control -->
+							<div class="mb-6">
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Output Control</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div>
+										<label for="page-separator" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+											Page Separator
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Custom separator to use between pages
+												</div>
+											</div>
+										</label>
+										<input
+											id="page-separator"
+											type="text"
+											bind:value={$conversionOptions.page_separator}
+											placeholder="Default"
+											class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+										/>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="extract-images"
+											type="checkbox"
+											bind:checked={$conversionOptions.extract_images}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="extract-images" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Extract Images
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Extract images from document
+												</div>
+											</div>
+										</label>
+									</div>
+								</div>
+							</div>
+
+							<!-- LLM Processing -->
+							{#if $conversionOptions.use_llm}
+								<div class="mb-6">
+									<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">LLM Processing</h4>
+									<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+										<div>
+											<label for="max-concurrency" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+												Max Concurrency
+												<div class="relative group ml-1">
+													<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+													<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+														Maximum concurrent LLM requests (1-20)
+													</div>
+												</div>
+											</label>
+											<input
+												id="max-concurrency"
+												type="number"
+												bind:value={$conversionOptions.max_concurrency}
+												placeholder="3"
+												min="1"
+												max="20"
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+											/>
+										</div>
+										<div>
+											<label for="confidence-threshold" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+												Confidence Threshold
+												<div class="relative group ml-1">
+													<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+													<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+														Confidence threshold for relabeling (0-1)
+													</div>
+												</div>
+											</label>
+											<input
+												id="confidence-threshold"
+												type="number"
+												bind:value={$conversionOptions.confidence_threshold}
+												placeholder="0.7"
+												min="0"
+												max="1"
+												step="0.01"
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+											/>
+										</div>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Debug Options -->
+							<div>
+								<h4 class="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">Debug Options</h4>
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div class="flex items-center">
+										<input
+											id="debug"
+											type="checkbox"
+											bind:checked={$conversionOptions.debug}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="debug" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Debug Mode
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Enable debug mode for troubleshooting
+												</div>
+											</div>
+										</label>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="debug-layout"
+											type="checkbox"
+											bind:checked={$conversionOptions.debug_layout_images}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="debug-layout" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											Layout Images
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Save layout debug images
+												</div>
+											</div>
+										</label>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="debug-pdf"
+											type="checkbox"
+											bind:checked={$conversionOptions.debug_pdf_images}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="debug-pdf" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											PDF Images
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Save PDF debug images
+												</div>
+											</div>
+										</label>
+									</div>
+									<div class="flex items-center">
+										<input
+											id="debug-json"
+											type="checkbox"
+											bind:checked={$conversionOptions.debug_json}
+											class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-200 dark:border-gray-600"
+										/>
+										<label for="debug-json" class="flex items-center ml-2 text-sm text-gray-700 dark:text-gray-300">
+											JSON Data
+											<div class="relative group ml-1">
+												<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+												<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+													Save debug JSON data
+												</div>
+											</div>
+										</label>
+									</div>
+									{#if $conversionOptions.debug}
+										<div class="md:col-span-2">
+											<label for="debug-folder" class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+												Debug Folder
+												<div class="relative group ml-1">
+													<Info class="w-3 h-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+													<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+														Folder to save debug data
+													</div>
+												</div>
+											</label>
+											<input
+												id="debug-folder"
+												type="text"
+												bind:value={$conversionOptions.debug_data_folder}
+												placeholder="debug_data"
+												class="block w-full rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+											/>
+										</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>

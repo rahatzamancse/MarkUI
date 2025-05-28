@@ -2,7 +2,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import aiofiles
 from fastapi import UploadFile
 from app.core.config import get_settings
@@ -74,11 +74,11 @@ class FileManager:
         """Get file size in bytes"""
         return os.path.getsize(file_path) if os.path.exists(file_path) else 0
     
-    def get_job_dir(self, job_id: int) -> str:
+    def get_job_dir(self, job_id: str) -> str:
         """Get job directory for a conversion job"""
         return os.path.join(self.settings.output_dir, f"job_{job_id}")
     
-    def get_output_path(self, job_id: int, output_format: str) -> str:
+    def get_output_path(self, job_id: str, output_format: str) -> str:
         """Get output file path for a conversion job"""
         job_dir = self.get_job_dir(job_id)
         
@@ -94,40 +94,41 @@ class FileManager:
         
         return os.path.join(job_dir, filename)
     
-    def get_images_dir(self, job_id: int) -> str:
+    def get_images_dir(self, job_id: str) -> str:
         """Get images directory for a conversion job (same as job directory)"""
         return self.get_job_dir(job_id)
     
-    def ensure_job_directory(self, job_id: int) -> str:
+    def ensure_job_directory(self, job_id: str) -> str:
         """Ensure job directory exists and return its path"""
         job_dir = self.get_job_dir(job_id)
         os.makedirs(job_dir, exist_ok=True)
         return job_dir
     
-    async def cleanup_old_files(self, max_age_days: int = 7):
-        """Clean up old files and directories"""
-        import time
-        current_time = time.time()
-        max_age_seconds = max_age_days * 24 * 60 * 60
-        
-        # Clean upload directory
-        await self._cleanup_directory(self.settings.upload_dir, current_time, max_age_seconds)
-        
-        # Clean output directory
-        await self._cleanup_directory(self.settings.output_dir, current_time, max_age_seconds)
-        
-    async def _cleanup_directory(self, directory: str, current_time: float, max_age_seconds: int):
-        """Helper method to clean up a directory"""
+    def read_conversion_output(self, job_id: str, output_file_path: str) -> Optional[str]:
+        """Read conversion output content from file"""
         try:
-            for item in os.listdir(directory):
-                item_path = os.path.join(directory, item)
-                if os.path.isfile(item_path):
-                    file_age = current_time - os.path.getmtime(item_path)
-                    if file_age > max_age_seconds:
-                        await self.delete_file(item_path)
-                elif os.path.isdir(item_path):
-                    dir_age = current_time - os.path.getmtime(item_path)
-                    if dir_age > max_age_seconds:
-                        await self.delete_directory(item_path)
+            if os.path.exists(output_file_path):
+                with open(output_file_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            return None
         except Exception as e:
-            logger.error(f"Error cleaning up directory {directory}: {e}") 
+            logger.error(f"Error reading conversion output for job {job_id}: {e}")
+            return None
+    
+    def get_conversion_images(self, job_id: str) -> List[str]:
+        """Get list of image URLs for a conversion job"""
+        try:
+            job_dir = self.get_job_dir(job_id)
+            images = []
+            
+            if os.path.exists(job_dir):
+                for item in os.listdir(job_dir):
+                    item_path = os.path.join(job_dir, item)
+                    # Only include image files, not the output file
+                    if os.path.isfile(item_path) and item.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp')):
+                        images.append(f"/output/job_{job_id}/{item}")
+            
+            return images
+        except Exception as e:
+            logger.error(f"Error getting conversion images for job {job_id}: {e}")
+            return [] 

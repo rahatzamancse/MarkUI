@@ -7,10 +7,11 @@ import os
 import logging
 from dotenv import load_dotenv
 
-from app.api.routes import pdf, conversion, settings, health
+from app.api.routes import pdf, conversion, settings
 from app.core.config import get_settings
-from app.core.database import init_db
+from app.core.redis_client import init_redis, close_redis, redis_client
 from app.services.file_manager import FileManager
+from app.services.background_tasks import start_background_tasks, stop_background_tasks
 
 # Load environment variables
 load_dotenv()
@@ -25,12 +26,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting MarkUI Backend...")
     
-    # Initialize database
-    await init_db()
+    # Initialize Redis
+    await init_redis()
     
     # Initialize file manager
     file_manager = FileManager()
     await file_manager.ensure_directories()
+    
+    # Start background tasks
+    await start_background_tasks(redis_client)
+    logger.info("Background tasks started")
     
     logger.info("MarkUI Backend started successfully")
     
@@ -38,6 +43,13 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down MarkUI Backend...")
+    
+    # Stop background tasks
+    await stop_background_tasks()
+    logger.info("Background tasks stopped")
+    
+    # Close Redis
+    await close_redis()
 
 # Create FastAPI app
 app = FastAPI(
@@ -57,17 +69,17 @@ app.add_middleware(
 )
 
 # Mount static files
-os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+config_settings = get_settings()
+os.makedirs(config_settings.static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=config_settings.static_dir), name="static")
 
 # Mount output directory for conversion outputs (new structure)
-os.makedirs("outputs", exist_ok=True)
-app.mount("/output", StaticFiles(directory="outputs"), name="output")
+os.makedirs(config_settings.output_dir, exist_ok=True)
+app.mount("/output", StaticFiles(directory=config_settings.output_dir), name="output")
 
 # Old images mount removed - now using /output for job folders
 
 # Include routers
-app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(pdf.router, prefix="/api/v1/pdf", tags=["pdf"])
 app.include_router(conversion.router, prefix="/api/v1/conversion", tags=["conversion"])
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])

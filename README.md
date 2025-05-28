@@ -12,6 +12,7 @@ A modern, full-stack application for converting PDF documents to Markdown, JSON,
 - **⚡ Real-time Processing**: Live conversion progress and status updates
 - **📱 Mobile Friendly**: Responsive design for all devices
 - **🔧 Configurable**: Comprehensive settings for API keys and preferences
+- **📁 Data Storage**: Redis for fast data storage and caching
 
 ## 🏗️ Architecture
 
@@ -28,15 +29,15 @@ A modern, full-stack application for converting PDF documents to Markdown, JSON,
 - **State**: Svelte stores for global state management
 - **UI**: Modern, accessible interface with Lucide icons
 
-## 🛠️ Technology Stack
+## 🛠️ Tech Stack
 
-**Backend:**
-- FastAPI
-- SQLAlchemy
-- Marker PDF
-- Pydantic v2
-- Background Tasks
-- Multiple LLM APIs
+### Backend
+- **Framework**: FastAPI (Python)
+- **PDF Processing**: marker library for advanced PDF to Markdown conversion
+- **Background Jobs**: AsyncIO with Redis for job queuing
+- **Data Storage**: Redis
+- **File Storage**: Local filesystem with organized directory structure
+- **API Documentation**: Automatic OpenAPI/Swagger documentation
 
 **Frontend:**
 - Svelte 5

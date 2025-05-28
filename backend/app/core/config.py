@@ -24,10 +24,14 @@ class Settings(BaseSettings):
     static_dir: str = "static"
     max_file_size: int = 100 * 1024 * 1024  # 100MB
     
-    # Database settings
-    database_url: str = "sqlite:///./markui.db"
+    # PDF Storage Management (Hybrid Approach)
+    max_stored_pdfs: int = 50  # Maximum number of PDFs to keep
+    max_storage_size_mb: int = 5000  # Maximum total storage size (5GB)
+    min_retention_hours: int = 24  # Minimum time to keep a PDF before deletion
+    cleanup_batch_size: int = 10  # Number of files to delete in one cleanup batch
+    storage_check_interval_minutes: int = 30  # How often to check storage limits
     
-    # Redis settings (for caching and task queue)
+    # Redis settings (for data storage and task queue)
     redis_url: str = "redis://localhost:6379"
     
     # Marker library settings

@@ -15,7 +15,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 
 from app.core.config import get_settings
-from app.models.conversion_job import ConversionJob, OutputFormat
+from app.schemas.models import ConversionJob, OutputFormat
 from app.services.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
@@ -295,7 +295,7 @@ class MarkerService:
     
     def _build_marker_config(self, job: ConversionJob) -> Dict[str, Any]:
         """Build marker configuration from job settings"""
-        # Extract values using getattr to avoid SQLAlchemy Column type issues
+        # Extract values using getattr for consistent attribute access
         output_format = getattr(job, 'output_format')
         selected_pages = getattr(job, 'selected_pages', None)
         use_llm = getattr(job, 'use_llm', False)
@@ -310,147 +310,131 @@ class MarkerService:
         
         config = {
             "output_format": output_format.value,
+            "use_llm": use_llm,
+            "force_ocr": force_ocr,
+            "strip_existing_ocr": strip_existing_ocr,
+            "format_lines": format_lines,
+            "redo_inline_math": redo_inline_math,
+            "disable_image_extraction": disable_image_extraction,
+            "paginate_output": paginate_output,
         }
         
-        # Add page range if specified (marker uses 0-based indexing)
+        # Add page range if specified
         if selected_pages:
-            page_ranges = []
-            for page in selected_pages:
-                # Convert from 1-based (frontend) to 0-based (marker) page numbering
-                # Validate that page number is positive
-                if page < 1:
-                    logger.warning(f"Invalid page number {page}, skipping")
-                    continue
-                zero_based_page = page - 1
-                page_ranges.append(str(zero_based_page))
-            
-            if page_ranges:
-                config["page_range"] = ",".join(page_ranges)
+            # Convert page numbers to marker format (0-indexed)
+            page_range = ",".join([str(p - 1) for p in selected_pages])
+            config["page_range"] = page_range
         
-        # Add marker options using correct parameter names from help output
-        if use_llm:
-            config["use_llm"] = True
-            if llm_service:
-                config["llm_service"] = llm_service
-        
-        if force_ocr:
-            config["force_ocr"] = True
-            
-        if strip_existing_ocr:
-            config["strip_existing_ocr"] = True
-            
-        if format_lines:
-            config["format_lines"] = True
-            
-        if redo_inline_math:
-            config["redo_inline_math"] = True
-            
-        if disable_image_extraction:
-            config["disable_image_extraction"] = True
-            
-        if paginate_output:
-            config["paginate_output"] = True
-        
-        # Add LLM service configuration using correct parameter names
+        # Add LLM configuration
         if use_llm and llm_service:
-            # Get job-specific API keys
-            job_gemini_key = getattr(job, 'gemini_api_key', None)
-            job_openai_key = getattr(job, 'openai_api_key', None)
-            job_claude_key = getattr(job, 'claude_api_key', None)
+            config["llm_service"] = llm_service
             
-            if "gemini" in llm_service.lower():
-                # Use job-specific key or fallback to settings
-                api_key = job_gemini_key or self.settings.gemini_api_key
-                if api_key:
-                    config["gemini_api_key"] = api_key
-                if llm_model:
+            # Add API keys from job if available
+            gemini_api_key = getattr(job, 'gemini_api_key', None)
+            openai_api_key = getattr(job, 'openai_api_key', None)
+            claude_api_key = getattr(job, 'claude_api_key', None)
+            
+            if gemini_api_key:
+                config["gemini_api_key"] = gemini_api_key
+            if openai_api_key:
+                config["openai_api_key"] = openai_api_key
+            if claude_api_key:
+                config["claude_api_key"] = claude_api_key
+            
+            if llm_model:
+                # Set model based on service type
+                if "gemini" in llm_service.lower():
                     config["gemini_model_name"] = llm_model
-            elif "openai" in llm_service.lower():
-                # Use job-specific key or fallback to settings
-                api_key = job_openai_key or self.settings.openai_api_key
-                if api_key:
-                    config["openai_api_key"] = api_key
-                config["openai_model"] = llm_model or self.settings.openai_model
-                if self.settings.openai_base_url:
-                    config["openai_base_url"] = self.settings.openai_base_url
-            elif "claude" in llm_service.lower():
-                # Use job-specific key or fallback to settings
-                api_key = job_claude_key or self.settings.claude_api_key
-                if api_key:
-                    config["claude_api_key"] = api_key
-                if llm_model:
+                elif "openai" in llm_service.lower():
+                    config["openai_model"] = llm_model
+                elif "claude" in llm_service.lower():
                     config["claude_model_name"] = llm_model
-            elif "ollama" in llm_service.lower():
-                config["ollama_base_url"] = self.settings.ollama_base_url
-                config["ollama_model"] = llm_model or self.settings.ollama_model
-            elif "vertex" in llm_service.lower():
-                config["vertex_project_id"] = self.settings.vertex_project_id
-                vertex_location = getattr(self.settings, 'vertex_location', None)
-                if vertex_location:
-                    config["vertex_location"] = vertex_location
+                elif "ollama" in llm_service.lower():
+                    config["ollama_model"] = llm_model
         
-        # Add additional configuration options that might be useful
-        # Image extraction settings
-        if not disable_image_extraction:
-            config["extract_images"] = True
+        # Performance & Quality Options
+        if hasattr(job, 'lowres_image_dpi') and job.lowres_image_dpi is not None:
+            config["lowres_image_dpi"] = job.lowres_image_dpi
+        if hasattr(job, 'highres_image_dpi') and job.highres_image_dpi is not None:
+            config["highres_image_dpi"] = job.highres_image_dpi
+        if hasattr(job, 'layout_batch_size') and job.layout_batch_size is not None:
+            config["layout_batch_size"] = job.layout_batch_size
+        if hasattr(job, 'detection_batch_size') and job.detection_batch_size is not None:
+            config["detection_batch_size"] = job.detection_batch_size
+        if hasattr(job, 'recognition_batch_size') and job.recognition_batch_size is not None:
+            config["recognition_batch_size"] = job.recognition_batch_size
         
-        # OCR settings
-        if hasattr(job, 'disable_ocr') and getattr(job, 'disable_ocr', False):
-            config["disable_ocr"] = True
+        # OCR & Text Processing Options
+        if hasattr(job, 'languages') and job.languages is not None:
+            config["languages"] = ",".join(job.languages)
+        if hasattr(job, 'ocr_task_name') and job.ocr_task_name is not None:
+            config["ocr_task_name"] = job.ocr_task_name
+        if hasattr(job, 'disable_ocr_math') and job.disable_ocr_math is not None:
+            config["disable_ocr_math"] = job.disable_ocr_math
+        if hasattr(job, 'keep_chars') and job.keep_chars is not None:
+            config["keep_chars"] = job.keep_chars
         
-        # Debug settings
-        if hasattr(job, 'debug') and getattr(job, 'debug', False):
-            config["debug"] = True
+        # Layout & Structure Options
+        if hasattr(job, 'force_layout_block') and job.force_layout_block is not None:
+            config["force_layout_block"] = job.force_layout_block
+        if hasattr(job, 'column_gap_ratio') and job.column_gap_ratio is not None:
+            config["column_gap_ratio"] = job.column_gap_ratio
+        if hasattr(job, 'gap_threshold') and job.gap_threshold is not None:
+            config["gap_threshold"] = job.gap_threshold
+        if hasattr(job, 'list_gap_threshold') and job.list_gap_threshold is not None:
+            config["list_gap_threshold"] = job.list_gap_threshold
         
-        # Performance settings
-        layout_batch_size = getattr(self.settings, 'layout_batch_size', None)
-        if layout_batch_size:
-            config["layout_batch_size"] = layout_batch_size
+        # Table Processing Options
+        if hasattr(job, 'detect_boxes') and job.detect_boxes is not None:
+            config["detect_boxes"] = job.detect_boxes
+        if hasattr(job, 'table_rec_batch_size') and job.table_rec_batch_size is not None:
+            config["table_rec_batch_size"] = job.table_rec_batch_size
+        if hasattr(job, 'max_table_rows') and job.max_table_rows is not None:
+            config["max_table_rows"] = job.max_table_rows
+        if hasattr(job, 'max_rows_per_batch') and job.max_rows_per_batch is not None:
+            config["max_rows_per_batch"] = job.max_rows_per_batch
         
-        recognition_batch_size = getattr(self.settings, 'recognition_batch_size', None)
-        if recognition_batch_size:
-            config["recognition_batch_size"] = recognition_batch_size
+        # Section & Header Processing
+        if hasattr(job, 'level_count') and job.level_count is not None:
+            config["level_count"] = job.level_count
+        if hasattr(job, 'merge_threshold') and job.merge_threshold is not None:
+            config["merge_threshold"] = job.merge_threshold
+        if hasattr(job, 'default_level') and job.default_level is not None:
+            config["default_level"] = job.default_level
         
-        # DPI settings for image processing
-        lowres_image_dpi = getattr(self.settings, 'lowres_image_dpi', None)
-        if lowres_image_dpi:
-            config["lowres_image_dpi"] = lowres_image_dpi
+        # Advanced Processing Options
+        if hasattr(job, 'min_equation_height') and job.min_equation_height is not None:
+            config["min_equation_height"] = job.min_equation_height
+        if hasattr(job, 'equation_batch_size') and job.equation_batch_size is not None:
+            config["equation_batch_size"] = job.equation_batch_size
+        if hasattr(job, 'inlinemath_min_ratio') and job.inlinemath_min_ratio is not None:
+            config["inlinemath_min_ratio"] = job.inlinemath_min_ratio
         
-        highres_image_dpi = getattr(self.settings, 'highres_image_dpi', None)
-        if highres_image_dpi:
-            config["highres_image_dpi"] = highres_image_dpi
+        # Output Control Options
+        if hasattr(job, 'page_separator') and job.page_separator is not None:
+            config["page_separator"] = job.page_separator
+        if hasattr(job, 'extract_images') and job.extract_images is not None:
+            config["extract_images"] = job.extract_images
         
-        # Disable progress bars in production
-        config["disable_tqdm"] = True
+        # Debug Options
+        if hasattr(job, 'debug') and job.debug is not None:
+            config["debug"] = job.debug
+        if hasattr(job, 'debug_layout_images') and job.debug_layout_images is not None:
+            config["debug_layout_images"] = job.debug_layout_images
+        if hasattr(job, 'debug_pdf_images') and job.debug_pdf_images is not None:
+            config["debug_pdf_images"] = job.debug_pdf_images
+        if hasattr(job, 'debug_json') and job.debug_json is not None:
+            config["debug_json"] = job.debug_json
+        if hasattr(job, 'debug_data_folder') and job.debug_data_folder is not None:
+            config["debug_data_folder"] = job.debug_data_folder
         
-        # Disable multiprocessing in production for better control
-        config["disable_multiprocessing"] = True
+        # LLM Processing Options
+        if hasattr(job, 'max_concurrency') and job.max_concurrency is not None:
+            config["max_concurrency"] = job.max_concurrency
+        if hasattr(job, 'confidence_threshold') and job.confidence_threshold is not None:
+            config["confidence_threshold"] = job.confidence_threshold
         
-        # Add OCR quality thresholds if available in settings
-        ocr_space_threshold = getattr(self.settings, 'ocr_space_threshold', None)
-        if ocr_space_threshold:
-            config["ocr_space_threshold"] = ocr_space_threshold
-        
-        ocr_newline_threshold = getattr(self.settings, 'ocr_newline_threshold', None)
-        if ocr_newline_threshold:
-            config["ocr_newline_threshold"] = ocr_newline_threshold
-        
-        ocr_alphanum_threshold = getattr(self.settings, 'ocr_alphanum_threshold', None)
-        if ocr_alphanum_threshold:
-            config["ocr_alphanum_threshold"] = ocr_alphanum_threshold
-        
-        # Add timeout settings for LLM services
-        if use_llm:
-            timeout = getattr(self.settings, 'llm_timeout', 30)
-            config["timeout"] = timeout
-            
-            max_retries = getattr(self.settings, 'llm_max_retries', 2)
-            config["max_retries"] = max_retries
-            
-            retry_wait_time = getattr(self.settings, 'llm_retry_wait_time', 3)
-            config["retry_wait_time"] = retry_wait_time
-        
-        return config 
+        return config
 
     def _make_json_serializable(self, obj):
         """Helper function to make an object JSON serializable"""

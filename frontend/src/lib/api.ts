@@ -6,7 +6,8 @@ import type {
 	ConversionJobListResponse,
 	ConversionResult,
 	LLMServiceTestRequest,
-	LLMServiceTestResponse
+	LLMServiceTestResponse,
+	ServerConfigResponse
 } from './types';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
@@ -116,6 +117,12 @@ export class MarkUIAPI {
 			body: JSON.stringify(testRequest)
 		});
 
+		return handleResponse(response);
+	}
+
+	// Server Configuration
+	static async getServerConfig(): Promise<ServerConfigResponse> {
+		const response = await fetch(`${API_BASE_URL}/settings/server-config`);
 		return handleResponse(response);
 	}
 }

@@ -67,8 +67,60 @@ export const conversionOptions = writable({
 	redo_inline_math: false,
 	disable_image_extraction: false,
 	paginate_output: false,
+	
+	// Performance & Quality Options
+	lowres_image_dpi: undefined as number | undefined,
+	highres_image_dpi: undefined as number | undefined,
+	layout_batch_size: undefined as number | undefined,
+	detection_batch_size: undefined as number | undefined,
+	recognition_batch_size: undefined as number | undefined,
+	
+	// OCR & Text Processing Options
+	languages: undefined as string[] | undefined,
+	ocr_task_name: undefined as string | undefined,
+	disable_ocr_math: undefined as boolean | undefined,
+	keep_chars: undefined as boolean | undefined,
+	
+	// Layout & Structure Options
+	force_layout_block: undefined as string | undefined,
+	column_gap_ratio: undefined as number | undefined,
+	gap_threshold: undefined as number | undefined,
+	list_gap_threshold: undefined as number | undefined,
+	
+	// Table Processing Options
+	detect_boxes: undefined as boolean | undefined,
+	table_rec_batch_size: undefined as number | undefined,
+	max_table_rows: undefined as number | undefined,
+	max_rows_per_batch: undefined as number | undefined,
+	
+	// Section & Header Processing
+	level_count: undefined as number | undefined,
+	merge_threshold: undefined as number | undefined,
+	default_level: undefined as number | undefined,
+	
+	// Advanced Processing Options
+	min_equation_height: undefined as number | undefined,
+	equation_batch_size: undefined as number | undefined,
+	inlinemath_min_ratio: undefined as number | undefined,
+	
+	// Output Control Options
+	page_separator: undefined as string | undefined,
+	extract_images: undefined as boolean | undefined,
+	
+	// Debug Options
+	debug: undefined as boolean | undefined,
+	debug_layout_images: undefined as boolean | undefined,
+	debug_pdf_images: undefined as boolean | undefined,
+	debug_json: undefined as boolean | undefined,
+	debug_data_folder: undefined as string | undefined,
+	
+	// LLM service configuration
 	llm_service: undefined as string | undefined,
-	llm_model: undefined as string | undefined
+	llm_model: undefined as string | undefined,
+	
+	// LLM Processing Options
+	max_concurrency: undefined as number | undefined,
+	confidence_threshold: undefined as number | undefined
 });
 
 // Loading states
@@ -90,16 +142,16 @@ export const currentResult = writable<{
 
 // LLM Configuration (session-only, no persistence)
 export const llmConfig = writable({
+	default_llm_service: '',
 	gemini_api_key: '',
 	openai_api_key: '',
 	claude_api_key: '',
+	openai_model: 'gpt-4o',
+	openai_base_url: 'https://api.openai.com/v1',
+	claude_model_name: 'claude-3-sonnet-20240229',
 	ollama_base_url: 'http://localhost:11434',
 	ollama_model: 'llama3.2:latest',
-	openai_model: 'gpt-4o',
-	openai_base_url: '',
-	claude_model_name: 'claude-3-sonnet-20240229',
-	vertex_project_id: '',
-	default_llm_service: ''
+	vertex_project_id: ''
 });
 
 // Derived stores
@@ -218,5 +270,72 @@ export const actions = {
 			...config,
 			[key]: value
 		}));
+	},
+
+	resetConversionOptions() {
+		conversionOptions.set({
+			output_format: 'markdown' as OutputFormat,
+			use_llm: false,
+			force_ocr: false,
+			strip_existing_ocr: false,
+			format_lines: false,
+			redo_inline_math: false,
+			disable_image_extraction: false,
+			paginate_output: false,
+			
+			// Performance & Quality Options
+			lowres_image_dpi: undefined,
+			highres_image_dpi: undefined,
+			layout_batch_size: undefined,
+			detection_batch_size: undefined,
+			recognition_batch_size: undefined,
+			
+			// OCR & Text Processing Options
+			languages: undefined,
+			ocr_task_name: undefined,
+			disable_ocr_math: undefined,
+			keep_chars: undefined,
+			
+			// Layout & Structure Options
+			force_layout_block: undefined,
+			column_gap_ratio: undefined,
+			gap_threshold: undefined,
+			list_gap_threshold: undefined,
+			
+			// Table Processing Options
+			detect_boxes: undefined,
+			table_rec_batch_size: undefined,
+			max_table_rows: undefined,
+			max_rows_per_batch: undefined,
+			
+			// Section & Header Processing
+			level_count: undefined,
+			merge_threshold: undefined,
+			default_level: undefined,
+			
+			// Advanced Processing Options
+			min_equation_height: undefined,
+			equation_batch_size: undefined,
+			inlinemath_min_ratio: undefined,
+			
+			// Output Control Options
+			page_separator: undefined,
+			extract_images: undefined,
+			
+			// Debug Options
+			debug: undefined,
+			debug_layout_images: undefined,
+			debug_pdf_images: undefined,
+			debug_json: undefined,
+			debug_data_folder: undefined,
+			
+			// LLM service configuration
+			llm_service: undefined,
+			llm_model: undefined,
+			
+			// LLM Processing Options
+			max_concurrency: undefined,
+			confidence_threshold: undefined
+		});
 	}
 }; 

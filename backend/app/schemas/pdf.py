@@ -4,7 +4,7 @@ from datetime import datetime
 
 class PDFUploadResponse(BaseModel):
     """Response for PDF upload"""
-    id: int
+    id: str
     filename: str
     original_filename: str
     file_size: int
@@ -15,7 +15,7 @@ class PDFUploadResponse(BaseModel):
 
 class PDFInfo(BaseModel):
     """PDF information"""
-    id: int
+    id: str
     filename: str
     original_filename: str
     file_size: int
