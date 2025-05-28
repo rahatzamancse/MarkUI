@@ -341,16 +341,51 @@ class MarkerService:
             if claude_api_key:
                 config["claude_api_key"] = claude_api_key
             
-            if llm_model:
-                # Set model based on service type
-                if "gemini" in llm_service.lower():
-                    config["gemini_model_name"] = llm_model
-                elif "openai" in llm_service.lower():
-                    config["openai_model"] = llm_model
-                elif "claude" in llm_service.lower():
-                    config["claude_model_name"] = llm_model
-                elif "ollama" in llm_service.lower():
-                    config["ollama_model"] = llm_model
+            # Add service-specific configuration
+            ollama_base_url = getattr(job, 'ollama_base_url', None)
+            openai_base_url = getattr(job, 'openai_base_url', None)
+            claude_model_name = getattr(job, 'claude_model_name', None)
+            vertex_project_id = getattr(job, 'vertex_project_id', None)
+            
+            if ollama_base_url and "ollama" in llm_service.lower():
+                config["ollama_base_url"] = ollama_base_url
+            if openai_base_url and "openai" in llm_service.lower():
+                config["openai_base_url"] = openai_base_url
+            if claude_model_name and "claude" in llm_service.lower():
+                config["claude_model_name"] = claude_model_name
+            if vertex_project_id and "vertex" in llm_service.lower():
+                config["vertex_project_id"] = vertex_project_id
+            
+            # Add service-specific model names with priority over general llm_model
+            service_specific_openai_model = getattr(job, 'openai_model', None)
+            service_specific_ollama_model = getattr(job, 'ollama_model', None) 
+            service_specific_gemini_model = getattr(job, 'gemini_model_name', None)
+            general_llm_model = getattr(job, 'llm_model', None)
+            
+            if "gemini" in llm_service.lower():
+                # Use service-specific model if available, then general model, then environment default
+                if service_specific_gemini_model:
+                    config["gemini_model_name"] = service_specific_gemini_model
+                elif general_llm_model:
+                    config["gemini_model_name"] = general_llm_model
+            elif "openai" in llm_service.lower():
+                # Use service-specific model if available, then general model, then environment default
+                if service_specific_openai_model:
+                    config["openai_model"] = service_specific_openai_model
+                elif general_llm_model:
+                    config["openai_model"] = general_llm_model
+            elif "claude" in llm_service.lower():
+                # Use service-specific model if available, then general model, then environment default
+                if claude_model_name:
+                    config["claude_model_name"] = claude_model_name
+                elif general_llm_model:
+                    config["claude_model_name"] = general_llm_model
+            elif "ollama" in llm_service.lower():
+                # Use service-specific model if available, then general model, then environment default
+                if service_specific_ollama_model:
+                    config["ollama_model"] = service_specific_ollama_model
+                elif general_llm_model:
+                    config["ollama_model"] = general_llm_model
         
         # Performance & Quality Options
         if hasattr(job, 'lowres_image_dpi') and job.lowres_image_dpi is not None:

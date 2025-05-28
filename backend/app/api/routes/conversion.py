@@ -119,9 +119,21 @@ async def process_conversion_job(job_id: str):
             max_concurrency=job_data.get("max_concurrency"),
             confidence_threshold=job_data.get("confidence_threshold"),
             
+            # Service-specific LLM configuration
+            ollama_base_url=job_data.get("ollama_base_url"),
+            openai_base_url=job_data.get("openai_base_url"),
+            claude_model_name=job_data.get("claude_model_name"),
+            vertex_project_id=job_data.get("vertex_project_id"),
+            
+            # Service-specific model names
+            openai_model=job_data.get("openai_model"),
+            ollama_model=job_data.get("ollama_model"),
+            gemini_model_name=job_data.get("gemini_model_name"),
+            
             gemini_api_key=job_data.get("gemini_api_key"),
             openai_api_key=job_data.get("openai_api_key"),
             claude_api_key=job_data.get("claude_api_key"),
+            
             status=ConversionStatus(job_data["status"]),
             progress=job_data["progress"],
             output_file_path=job_data.get("output_file_path"),
@@ -331,9 +343,21 @@ async def create_conversion_job(
             "max_concurrency": job_data.max_concurrency,
             "confidence_threshold": job_data.confidence_threshold,
             
+            # Service-specific LLM configuration
+            "ollama_base_url": job_data.ollama_base_url,
+            "openai_base_url": job_data.openai_base_url,
+            "claude_model_name": job_data.claude_model_name,
+            "vertex_project_id": job_data.vertex_project_id,
+            
+            # Service-specific model names
+            "openai_model": job_data.openai_model,
+            "ollama_model": job_data.ollama_model,
+            "gemini_model_name": job_data.gemini_model_name,
+            
             "gemini_api_key": job_data.gemini_api_key,
             "openai_api_key": job_data.openai_api_key,
             "claude_api_key": job_data.claude_api_key,
+            
             "status": ConversionStatus.PENDING.value,
             "progress": 0,
             "created_at": datetime.utcnow().isoformat()
@@ -410,6 +434,17 @@ async def create_conversion_job(
             # LLM Processing Options
             max_concurrency=job_data.max_concurrency,
             confidence_threshold=job_data.confidence_threshold,
+            
+            # Service-specific LLM configuration
+            ollama_base_url=job_data.ollama_base_url,
+            openai_base_url=job_data.openai_base_url,
+            claude_model_name=job_data.claude_model_name,
+            vertex_project_id=job_data.vertex_project_id,
+            
+            # Service-specific model names
+            openai_model=job_data.openai_model,
+            ollama_model=job_data.ollama_model,
+            gemini_model_name=job_data.gemini_model_name,
             
             status=ConversionStatus.PENDING,
             progress=0,
@@ -504,6 +539,17 @@ async def get_conversion_job(
             # LLM Processing Options
             max_concurrency=job_data.get("max_concurrency"),
             confidence_threshold=job_data.get("confidence_threshold"),
+            
+            # Service-specific LLM configuration
+            ollama_base_url=job_data.get("ollama_base_url"),
+            openai_base_url=job_data.get("openai_base_url"),
+            claude_model_name=job_data.get("claude_model_name"),
+            vertex_project_id=job_data.get("vertex_project_id"),
+            
+            # Service-specific model names
+            openai_model=job_data.get("openai_model"),
+            ollama_model=job_data.get("ollama_model"),
+            gemini_model_name=job_data.get("gemini_model_name"),
             
             status=ConversionStatus(job_data["status"]),
             progress=job_data["progress"],
@@ -610,6 +656,17 @@ async def get_conversion_result(
             # LLM Processing Options
             max_concurrency=job_data.get("max_concurrency"),
             confidence_threshold=job_data.get("confidence_threshold"),
+            
+            # Service-specific LLM configuration
+            ollama_base_url=job_data.get("ollama_base_url"),
+            openai_base_url=job_data.get("openai_base_url"),
+            claude_model_name=job_data.get("claude_model_name"),
+            vertex_project_id=job_data.get("vertex_project_id"),
+            
+            # Service-specific model names
+            openai_model=job_data.get("openai_model"),
+            ollama_model=job_data.get("ollama_model"),
+            gemini_model_name=job_data.get("gemini_model_name"),
             
             status=ConversionStatus(job_data["status"]),
             progress=job_data["progress"],

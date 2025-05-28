@@ -47,7 +47,7 @@
 	let previewImages: string[] = $state([]);
 	let loadingPreview = $state(false);
 	let converting = $state(false);
-	let jobId: number | null = $state(null);
+	let jobId: string | null = $state(null);
 	let showApiKeys: Record<string, boolean> = $state({
 		gemini: false,
 		openai: false,
@@ -374,6 +374,29 @@
 				jobData.claude_api_key = $llmConfig.claude_api_key;
 			}
 
+			// Add service-specific LLM configuration
+			if ($llmConfig.ollama_base_url) {
+				jobData.ollama_base_url = $llmConfig.ollama_base_url;
+			}
+			if ($llmConfig.openai_base_url) {
+				jobData.openai_base_url = $llmConfig.openai_base_url;
+			}
+			if ($llmConfig.claude_model_name) {
+				jobData.claude_model_name = $llmConfig.claude_model_name;
+			}
+			if ($llmConfig.vertex_project_id) {
+				jobData.vertex_project_id = $llmConfig.vertex_project_id;
+			}
+
+			// Add service-specific model names
+			if ($llmConfig.openai_model) {
+				jobData.openai_model = $llmConfig.openai_model;
+			}
+			if ($llmConfig.ollama_model) {
+				jobData.ollama_model = $llmConfig.ollama_model;
+			}
+			// Note: gemini_model_name would be set here if we had a separate gemini model field in the frontend
+
 			// Create conversion job
 			const job = await MarkUIAPI.createConversionJob(jobData);
 			jobId = job.id;
@@ -387,7 +410,7 @@
 		}
 	}
 
-	async function pollConversionStatus(jobId: number) {
+	async function pollConversionStatus(jobId: string) {
 		const maxAttempts = 120; // 2 minutes with 1-second intervals
 		let attempts = 0;
 

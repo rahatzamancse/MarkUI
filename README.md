@@ -264,6 +264,187 @@ pnpm format
 pnpm check
 ```
 
+## 🐳 Docker Deployment
+
+MarkUI provides a single-container Docker solution that runs both frontend and backend together with nginx as a reverse proxy.
+
+### 🚀 Quick Deployment Script
+
+For the easiest deployment experience, use the included deployment script:
+
+```bash
+# Make script executable (first time only)
+chmod +x deploy.sh
+
+# Deploy locally
+./deploy.sh deploy
+
+# Build, deploy, and push to Docker Hub
+./deploy.sh push
+
+# Build only
+./deploy.sh build
+```
+
+### Quick Start with Docker
+
+1. **Clone the repository**:
+   ```bash
+   git clone <your-repo-url>
+   cd MarkUI
+   ```
+
+2. **Configure environment variables**:
+   ```bash
+   cp docker.env.example .env
+   # Edit .env with your API keys and settings
+   ```
+
+3. **Build and run with Docker Compose**:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Access the application**:
+   - Open `http://localhost` in your browser
+   - The frontend and backend are served from the same port (80)
+
+### Manual Docker Build
+
+1. **Build the Docker image**:
+   ```bash
+   docker build -t markui .
+   ```
+
+2. **Run with Redis**:
+   ```bash
+   # Start Redis
+   docker run -d --name redis redis:7-alpine
+   
+   # Run MarkUI
+   docker run -d \
+     --name markui \
+     --link redis:redis \
+     -p 80:80 \
+     -e REDIS_URL=redis://redis:6379 \
+     -e GEMINI_API_KEY=your_api_key \
+     -e OPENAI_API_KEY=your_api_key \
+     markui
+   ```
+
+### Environment Configuration
+
+The Docker container supports all environment variables from `backend/env.example`. Key variables:
+
+#### Required for LLM Services
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+CLAUDE_API_KEY=your_claude_api_key_here
+```
+
+#### Redis Configuration
+```env
+REDIS_URL=redis://redis:6379
+```
+
+#### Security (Change in Production)
+```env
+SECRET_KEY=your-secret-key-change-this-in-production
+```
+
+#### Optional LLM Settings
+```env
+OPENAI_MODEL=gpt-4
+CLAUDE_MODEL_NAME=claude-3-sonnet-20240229
+OLLAMA_BASE_URL=http://localhost:11434
+VERTEX_PROJECT_ID=your_gcp_project_id
+TORCH_DEVICE=auto
+```
+
+### Pushing to Docker Hub
+
+1. **Tag your image**:
+   ```bash
+   docker tag markui your-dockerhub-username/markui:latest
+   docker tag markui your-dockerhub-username/markui:v1.0.0
+   ```
+
+2. **Login to Docker Hub**:
+   ```bash
+   docker login
+   ```
+
+3. **Push the image**:
+   ```bash
+   docker push your-dockerhub-username/markui:latest
+   docker push your-dockerhub-username/markui:v1.0.0
+   ```
+
+4. **Create a repository on Docker Hub**:
+   - Go to [Docker Hub](https://hub.docker.com/)
+   - Click "Create Repository"
+   - Name it `markui`
+   - Set visibility (public/private)
+   - Add description and documentation
+
+### Using Pre-built Image
+
+Once pushed to Docker Hub, others can use your image:
+
+```bash
+# Create environment file
+cp docker.env.example .env
+# Edit .env with your settings
+
+# Run with docker-compose (update image name in docker-compose.yml)
+docker-compose up -d
+
+# Or run directly
+docker run -d \
+  --name markui \
+  -p 80:80 \
+  --env-file .env \
+  your-dockerhub-username/markui:latest
+```
+
+### Docker Architecture
+
+The container includes:
+- **Nginx**: Serves frontend static files and proxies API requests
+- **FastAPI Backend**: Handles PDF processing and AI integration
+- **Frontend Build**: Svelte application built for production
+- **Supervisor**: Manages both nginx and backend processes
+
+### Persistent Storage
+
+The Docker setup uses volumes for:
+- `markui_uploads`: PDF file uploads
+- `markui_outputs`: Conversion results
+- `markui_static`: Static assets
+- `redis_data`: Redis persistence
+
+### Health Checks and Logs
+
+Check container status:
+```bash
+# View logs
+docker-compose logs -f markui
+docker-compose logs -f redis
+
+# Check health
+curl http://localhost/api/v1/health
+```
+
+### Production Considerations
+
+1. **Environment Variables**: Always set proper API keys and secret keys
+2. **Redis Persistence**: The setup includes Redis persistence with AOF
+3. **File Storage**: Use volume mounts for persistent file storage
+4. **Security**: Update SECRET_KEY and other security settings
+5. **Resources**: Ensure adequate CPU/RAM for PDF processing
+6. **Backup**: Regularly backup volumes and Redis data
+
 ## 🚀 Production Deployment
 
 ### Backend
@@ -278,17 +459,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd frontend
 pnpm build
 pnpm preview
-```
-
-### Docker (Optional)
-```bash
-# Backend
-docker build -t markui-backend ./backend
-docker run -p 8000:8000 markui-backend
-
-# Frontend
-docker build -t markui-frontend ./frontend
-docker run -p 3000:3000 markui-frontend
 ```
 
 ## 🤝 Contributing

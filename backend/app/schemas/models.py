@@ -107,6 +107,17 @@ class ConversionJob(BaseModel):
     openai_api_key: Optional[str] = None
     claude_api_key: Optional[str] = None
     
+    # Service-specific LLM configuration
+    ollama_base_url: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    claude_model_name: Optional[str] = None
+    vertex_project_id: Optional[str] = None
+    
+    # Service-specific model names  
+    openai_model: Optional[str] = None
+    ollama_model: Optional[str] = None
+    gemini_model_name: Optional[str] = None
+    
     # Job status
     status: ConversionStatus = ConversionStatus.PENDING
     progress: int = 0

@@ -10,7 +10,7 @@ import type {
 	ServerConfigResponse
 } from './types';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = '/api/v1';
 
 async function handleResponse<T = any>(response: Response): Promise<T> {
 	if (!response.ok) {
@@ -51,10 +51,10 @@ export class MarkUIAPI {
 		const response = await fetch(`${API_BASE_URL}/pdf/${pdfId}/preview`);
 		const result = await handleResponse<{ preview_images: string[] }>(response);
 		
-		// Convert relative paths to absolute URLs
+		// Convert relative paths to absolute URLs using current host
 		result.preview_images = result.preview_images.map(path => {
 			if (path.startsWith('/')) {
-				return `http://localhost:8000${path}`;
+				return `${window.location.origin}${path}`;
 			}
 			return path;
 		});
@@ -75,7 +75,7 @@ export class MarkUIAPI {
 		return handleResponse(response);
 	}
 
-	static async getConversionJob(jobId: number): Promise<ConversionJob> {
+	static async getConversionJob(jobId: string): Promise<ConversionJob> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}`);
 		return handleResponse(response);
 	}
@@ -85,15 +85,15 @@ export class MarkUIAPI {
 		return handleResponse(response);
 	}
 
-	static async getConversionResult(jobId: number): Promise<ConversionResult> {
+	static async getConversionResult(jobId: string): Promise<ConversionResult> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}/result`);
 		const result = await handleResponse<ConversionResult>(response);
 		
-		// Convert relative image paths to absolute URLs
+		// Convert relative image paths to absolute URLs using current host
 		if (result.images) {
 			result.images = result.images.map(path => {
 				if (path.startsWith('/')) {
-					return `http://localhost:8000${path}`;
+					return `${window.location.origin}${path}`;
 				}
 				return path;
 			});
@@ -102,7 +102,7 @@ export class MarkUIAPI {
 		return result;
 	}
 
-	static async downloadConversionResult(jobId: number): Promise<Blob> {
+	static async downloadConversionResult(jobId: string): Promise<Blob> {
 		const response = await fetch(`${API_BASE_URL}/conversion/jobs/${jobId}/download`);
 		return handleResponse<Blob>(response);
 	}

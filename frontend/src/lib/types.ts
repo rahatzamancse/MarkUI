@@ -105,10 +105,21 @@ export interface ConversionJobCreate {
 	gemini_api_key?: string;
 	openai_api_key?: string;
 	claude_api_key?: string;
+	
+	// Service-specific LLM configuration
+	ollama_base_url?: string;
+	openai_base_url?: string;
+	claude_model_name?: string;
+	vertex_project_id?: string;
+	
+	// Service-specific model names  
+	openai_model?: string;
+	ollama_model?: string;
+	gemini_model_name?: string;
 }
 
 export interface ConversionJob {
-	id: number;
+	id: string;
 	pdf_document_id: number;
 	status: ConversionStatus;
 	output_format: OutputFormat;

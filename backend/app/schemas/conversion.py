@@ -76,6 +76,17 @@ class ConversionJobCreate(BaseModel):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     claude_api_key: Optional[str] = None
+    
+    # Service-specific LLM configuration
+    ollama_base_url: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    claude_model_name: Optional[str] = None
+    vertex_project_id: Optional[str] = None
+    
+    # Service-specific model names  
+    openai_model: Optional[str] = None
+    ollama_model: Optional[str] = None
+    gemini_model_name: Optional[str] = None
 
 class ConversionJobResponse(BaseModel):
     """Response for conversion job"""
@@ -146,6 +157,17 @@ class ConversionJobResponse(BaseModel):
     # LLM Processing Options
     max_concurrency: Optional[int]
     confidence_threshold: Optional[float]
+    
+    # Service-specific LLM configuration
+    ollama_base_url: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    claude_model_name: Optional[str] = None
+    vertex_project_id: Optional[str] = None
+    
+    # Service-specific model names  
+    openai_model: Optional[str] = None
+    ollama_model: Optional[str] = None
+    gemini_model_name: Optional[str] = None
     
     # Job status
     status: ConversionStatus
