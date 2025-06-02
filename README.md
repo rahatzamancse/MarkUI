@@ -26,7 +26,7 @@ A modern, full-stack application for converting PDF documents to Markdown, JSON,
 Docker is the recommended way to run MarkUI. Currently only the GPU version is uploaded to Docker Hub. You will need a redis server running somewhere.
 
 ```bash
-docker run -d --name markui -p 80:80 -e REDIS_URL=redis://localhost:6379 markui
+docker run -d --name markui-gpu --gpus all --network host -e REDIS_URL=redis://localhost:6379 -e TORCH_DEVICE=cuda markui-gpu -p 80:80
 ```
 
 Open the app in your browser at `http://localhost:80`. For API documentation and usage, see `/docs` when running the server or visit `http://localhost:8000/docs`.
