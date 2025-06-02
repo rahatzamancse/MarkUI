@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { theme, isDarkMode, error, isLoading, actions } from '$lib/stores';
+	import GPUStatus from '$lib/components/GPUStatus.svelte';
 	import { 
 		Moon, 
 		Sun, 
@@ -65,6 +66,9 @@
 							Loading...
 						</div>
 					{/if}
+					
+					<!-- GPU Status -->
+					<GPUStatus />
 					
 					<button
 						onclick={() => actions.toggleTheme()}

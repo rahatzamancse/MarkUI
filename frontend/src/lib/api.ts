@@ -125,6 +125,12 @@ export class MarkUIAPI {
 		const response = await fetch(`${API_BASE_URL}/settings/server-config`);
 		return handleResponse(response);
 	}
+
+	// System Status
+	static async getSystemStatus(): Promise<import('./types').SystemStatus> {
+		const response = await fetch(`${API_BASE_URL}/settings/system-status`);
+		return handleResponse(response);
+	}
 }
 
 // Utility functions for file handling

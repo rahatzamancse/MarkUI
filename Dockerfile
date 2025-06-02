@@ -193,6 +193,7 @@ ENV HOST=127.0.0.1
 ENV PORT=8000
 ENV DEBUG=false
 ENV REDIS_URL=redis://10.0.0.10:6379
+ENV TORCH_DEVICE=cuda
 
 # Start the application
 CMD ["/app/start.sh"] 

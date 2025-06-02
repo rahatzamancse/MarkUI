@@ -240,6 +240,25 @@ export interface ServerConfigResponse {
 	default_vertex_project_id?: string;
 }
 
+export interface GPUDevice {
+	id: number;
+	name: string;
+	memory_total: number;
+	memory_allocated: number;
+	memory_cached: number;
+	is_current: boolean;
+}
+
+export interface SystemStatus {
+	timestamp: number;
+	gpu: {
+		available: boolean;
+		device_count: number;
+		devices: GPUDevice[];
+		torch_device: string;
+	};
+}
+
 // UI State Types
 export interface AppState {
 	theme: 'light' | 'dark';

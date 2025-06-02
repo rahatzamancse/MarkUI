@@ -300,16 +300,102 @@ async def _test_ollama_connection(test_request: LLMServiceTestRequest, settings:
         return False, f"Connection failed: {str(e)}"
 
 async def _test_vertex_connection(test_request: LLMServiceTestRequest, settings: dict | None) -> tuple[bool, str]:
-    """Test Vertex AI connection"""
+    """Test Google Vertex AI connection"""
     try:
-        # Vertex AI testing would require more complex setup
-        # For now, just return a placeholder
-        project_id = test_request.vertex_project_id or (settings.get("vertex_project_id") if settings else None)
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
+        
+        # Try to get project ID from: 1) request, 2) user settings, 3) server environment
+        project_id = (
+            test_request.vertex_project_id or 
+            (settings.get("vertex_project_id") if settings else None) or
+            get_settings().vertex_project_id
+        )
+        
         if not project_id:
             return False, "Project ID not provided"
         
-        # TODO: Implement actual Vertex AI connection test
-        return False, "Vertex AI testing not implemented yet"
+        try:
+            # Initialize Vertex AI
+            vertexai.init(project=project_id, location="us-central1")
+            
+            # Test with a simple request
+            model = GenerativeModel("gemini-pro")
+            response = await asyncio.to_thread(
+                model.generate_content,
+                "Hello",
+                generation_config={"max_output_tokens": 10}
+            )
+            
+            if response and response.text:
+                return True, "Connection successful"
+            else:
+                return False, "No response received"
+                
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "permission" in error_msg or "access" in error_msg:
+                return False, "Access denied or permissions issue"
+            elif "project" in error_msg:
+                return False, "Invalid project ID"
+            elif "quota" in error_msg or "rate" in error_msg:
+                return False, "Rate limit exceeded"
+            else:
+                return False, f"API error: {str(e)}"
+            
+    except ImportError:
+        return False, "Vertex AI library not installed"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)}"
+
+@router.get("/system-status")
+async def get_system_status():
+    """Get system status including GPU information"""
+    try:
+        status = {
+            "timestamp": time.time(),
+            "gpu": {
+                "available": False,
+                "device_count": 0,
+                "devices": [],
+                "torch_device": "cpu"
+            }
+        }
+        
+        # Check if PyTorch is available and can detect CUDA
+        try:
+            import torch
+            
+            status["gpu"]["available"] = torch.cuda.is_available()
+            status["gpu"]["device_count"] = torch.cuda.device_count()
+            
+            if torch.cuda.is_available():
+                # Get current device setting from environment
+                import os
+                torch_device = os.getenv("TORCH_DEVICE", "auto")
+                status["gpu"]["torch_device"] = torch_device
+                
+                # Get device information
+                devices = []
+                for i in range(torch.cuda.device_count()):
+                    device_props = torch.cuda.get_device_properties(i)
+                    devices.append({
+                        "id": i,
+                        "name": device_props.name,
+                        "memory_total": device_props.total_memory,
+                        "memory_allocated": torch.cuda.memory_allocated(i),
+                        "memory_cached": torch.cuda.memory_reserved(i),
+                        "is_current": i == torch.cuda.current_device()
+                    })
+                status["gpu"]["devices"] = devices
+            
+        except ImportError:
+            logger.warning("PyTorch not available for GPU status check")
+        except Exception as e:
+            logger.error(f"Error checking GPU status: {e}")
+        
+        return status
         
     except Exception as e:
-        return False, f"Connection failed: {str(e)}" 
+        logger.error(f"Error getting system status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get system status") 
